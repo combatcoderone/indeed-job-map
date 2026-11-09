@@ -1,40 +1,24 @@
 const DEFAULTS = {
   center: "saint-laurent",
   radiusKm: 25,
+  speed: "slow",
+  enableRest: true,
+  workMinutes: 2,
+  restMinutes: 1,
   distanceMode: "driving_km",
   maxDriveMinutes: 30,
   keepRemote: true,
   autoStart: true,
   townsOnly: false,
-  openInNewPage: true
+  openInNewPage: true,
+  loadMode: "page",
+  maxAutoPages: 10
 };
-
-function getElement(id) {
-  return document.getElementById(id);
-}
-
-function setValue(id, value) {
-  const el = getElement(id);
-  if (el) el.value = value;
-}
-
-function setChecked(id, value) {
-  const el = getElement(id);
-  if (el) el.checked = value;
-}
-
-function setText(id, value) {
-  const el = getElement(id);
-  if (el) el.textContent = value;
-}
 
 function sendToTab(action) {
   return new Promise(function (resolve) {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      if (!tabs || !tabs.length) {
-        resolve({ ok: false, reason: "no active tab" });
-        return;
-      }
+      if (!tabs || !tabs.length) { resolve({ ok: false, reason: "no active tab" }); return; }
       chrome.tabs.sendMessage(tabs[0].id, { action: action }, function (response) {
         if (chrome.runtime.lastError) {
           resolve({ ok: false, reason: "Open an Indeed search page first, then try again." });
@@ -46,124 +30,120 @@ function sendToTab(action) {
   });
 }
 
-function showStatus(message) {
-  setText("status", message);
+function showStatus(text) {
+  document.getElementById("status").textContent = text;
 }
 
 function loadSettings() {
   chrome.storage.sync.get(DEFAULTS, function (items) {
-    const data = Object.assign({}, DEFAULTS, items || {});
-    setValue("center", data.center);
-    setValue("radius", data.radiusKm);
-    setText("radiusLabel", data.radiusKm + " km");
-    setValue("distanceMode", data.distanceMode);
-    setValue("maxDriveMinutes", data.maxDriveMinutes);
-    setText("driveLabel", data.maxDriveMinutes + " min");
-    setChecked("keepRemote", data.keepRemote !== false);
-    setChecked("autoStart", data.autoStart !== false);
-    setChecked("townsOnly", data.townsOnly === true);
-    setValue("openInNewPage", data.openInNewPage === false ? "same" : "new");
+    document.getElementById("center").value = items.center || DEFAULTS.center;
+    document.getElementById("radius").value = items.radiusKm || DEFAULTS.radiusKm;
+    document.getElementById("radiusLabel").textContent = (items.radiusKm || DEFAULTS.radiusKm) + " km";
+    document.getElementById("speed").value = items.speed || DEFAULTS.speed;
+    document.getElementById("distanceMode").value = items.distanceMode || DEFAULTS.distanceMode;
+    document.getElementById("maxDriveMinutes").value = items.maxDriveMinutes || DEFAULTS.maxDriveMinutes;
+    document.getElementById("driveLabel").textContent = (items.maxDriveMinutes || DEFAULTS.maxDriveMinutes) + " min";
+    document.getElementById("enableRest").checked = items.enableRest !== false;
+    document.getElementById("workMinutes").value = items.workMinutes || DEFAULTS.workMinutes;
+    document.getElementById("workLabel").textContent = (items.workMinutes || DEFAULTS.workMinutes) + " min";
+    document.getElementById("restMinutes").value = (items.restMinutes == null ? DEFAULTS.restMinutes : items.restMinutes);
+    document.getElementById("restLabel").textContent = (items.restMinutes == null ? DEFAULTS.restMinutes : items.restMinutes) + " min";
+    document.getElementById("keepRemote").checked = items.keepRemote !== false;
+    document.getElementById("autoStart").checked = items.autoStart !== false;
+    document.getElementById("townsOnly").checked = items.townsOnly === true;
+    document.getElementById("openInNewPage").value = items.openInNewPage === false ? "same" : "new";
+    document.getElementById("loadMode").value = items.loadMode === "auto" ? "auto" : "page";
   });
 }
 
 function saveSettings() {
-  const data = {};
-  const center = getElement("center");
-  const radius = getElement("radius");
-  const distanceMode = getElement("distanceMode");
-  const maxDriveMinutes = getElement("maxDriveMinutes");
-  const keepRemote = getElement("keepRemote");
-  const autoStart = getElement("autoStart");
-  const townsOnly = getElement("townsOnly");
-  const openInNewPage = getElement("openInNewPage");
-
-  if (center) data.center = center.value;
-  if (radius) {
-    data.radiusKm = parseInt(radius.value, 10);
-    setText("radiusLabel", data.radiusKm + " km");
-  }
-  if (distanceMode) data.distanceMode = distanceMode.value;
-  if (maxDriveMinutes) {
-    data.maxDriveMinutes = parseInt(maxDriveMinutes.value, 10);
-    setText("driveLabel", data.maxDriveMinutes + " min");
-  }
-  if (keepRemote) data.keepRemote = keepRemote.checked;
-  if (autoStart) data.autoStart = autoStart.checked;
-  if (townsOnly) data.townsOnly = townsOnly.checked;
-  if (openInNewPage) data.openInNewPage = openInNewPage.value === "new";
-
-  if (!Object.keys(data).length) return;
+  const data = {
+    center: document.getElementById("center").value,
+    radiusKm: parseInt(document.getElementById("radius").value, 10),
+    speed: document.getElementById("speed").value,
+    distanceMode: document.getElementById("distanceMode").value,
+    maxDriveMinutes: parseInt(document.getElementById("maxDriveMinutes").value, 10),
+    enableRest: document.getElementById("enableRest").checked,
+    workMinutes: parseInt(document.getElementById("workMinutes").value, 10),
+    restMinutes: parseFloat(document.getElementById("restMinutes").value),
+    keepRemote: document.getElementById("keepRemote").checked,
+    autoStart: document.getElementById("autoStart").checked,
+    townsOnly: document.getElementById("townsOnly").checked,
+    openInNewPage: document.getElementById("openInNewPage").value === "new",
+    loadMode: document.getElementById("loadMode").value === "auto" ? "auto" : "page",
+    maxAutoPages: 10
+  };
+  document.getElementById("radiusLabel").textContent = data.radiusKm + " km";
+  document.getElementById("workLabel").textContent = data.workMinutes + " min";
+  document.getElementById("restLabel").textContent = data.restMinutes + " min";
+  document.getElementById("driveLabel").textContent = data.maxDriveMinutes + " min";
   chrome.storage.sync.set(data, function () {
-    if (chrome.runtime.lastError) {
-      showStatus("Could not save settings: " + chrome.runtime.lastError.message);
-      return;
-    }
     sendToTab("settingsUpdated");
   });
 }
 
-function onClick(id, handler) {
-  const el = getElement(id);
-  if (el) el.addEventListener("click", handler);
-}
-
 document.addEventListener("DOMContentLoaded", function () {
   loadSettings();
-
-  ["center", "radius", "distanceMode", "maxDriveMinutes", "keepRemote",
-    "autoStart", "townsOnly", "openInNewPage"].forEach(function (id) {
-    const el = getElement(id);
-    if (el) {
-      el.addEventListener("change", saveSettings);
-      if (el.type === "range") el.addEventListener("input", saveSettings);
-    }
+  ["center", "radius", "speed", "distanceMode", "maxDriveMinutes", "enableRest", "workMinutes", "restMinutes", "keepRemote", "autoStart", "townsOnly", "openInNewPage", "loadMode"].forEach(function (id) {
+    const el = document.getElementById(id);
+    el.addEventListener("change", saveSettings);
+    el.addEventListener("input", saveSettings);
   });
 
-  onClick("showCurrentJob", async function () {
+  const _lf = document.getElementById("loadFilter"); if (_lf) _lf.addEventListener("click", async function () {
+    showStatus("Loading all jobs to the end, then filtering. Slow mode rests 1 minute every 2 minutes if the load is long.");
+    const r = await sendToTab("loadAllAndFilter");
+    if (r && r.ok) showStatus("Done. Kept " + r.kept + " of " + r.total + " jobs.");
+    else if (r && r.reason === "stopped by captcha") showStatus("Stopped. Indeed showed a verification page. Wait a while before you try again.");
+    else if (r && r.reason === "stopped by user") showStatus("Stopped by you.");
+    else showStatus((r && r.reason) || "Could not reach the Indeed page. Open an Indeed search page first.");
+  });
+  document.getElementById("showCurrentJob").addEventListener("click", async function () {
     showStatus("Showing the open job on the map.");
-    const result = await sendToTab("showCurrentJobOnMap");
-    if (result && result.ok) showStatus("Showing on the map: " + (result.title || "current job"));
-    else showStatus((result && result.reason) || "Could not show that job. Open a job from an Indeed search page first.");
+    const r = await sendToTab("showCurrentJobOnMap");
+    if (r && r.ok) showStatus("Showing on the map: " + r.title);
+    else showStatus("Could not show that job. Click the job in the list first, then try again.");
   });
-
-  onClick("openMap", async function () {
-    showStatus("Opening the map. Scroll Indeed to load jobs before opening the map.");
-    const result = await sendToTab("showMap");
-    if (result && result.ok === false) showStatus(result.reason || "Could not open the map. Open an Indeed search page first.");
+  document.getElementById("openMap").addEventListener("click", async function () {
+    showStatus("Opening the map. Load all jobs first if the map looks empty.");
+    await sendToTab("showMap");
   });
-
-  onClick("nextPage", async function () {
+  document.getElementById("nextPage").addEventListener("click", async function () {
     showStatus("Going to next page.");
-    const result = await sendToTab("nextPage");
-    if (result && !result.ok) showStatus(result.reason || "No next page was found.");
+    const r = await sendToTab("nextPage");
+    if (r && !r.ok) showStatus(r.reason || "No next page was found.");
   });
-
-  onClick("prevPage", async function () {
+  document.getElementById("prevPage").addEventListener("click", async function () {
     showStatus("Going to previous page.");
-    const result = await sendToTab("prevPage");
-    if (result && !result.ok) showStatus(result.reason || "You are already on page 1.");
+    const r = await sendToTab("prevPage");
+    if (r && !r.ok) showStatus(r.reason || "You are already on page 1.");
   });
-
-  onClick("showAll", async function () {
-    const result = await sendToTab("showAll");
-    showStatus(result && result.ok === false ? (result.reason || "Could not show all jobs.") : "Showing all jobs again.");
+  const _pl = document.getElementById("pauseLoad"); if (_pl) _pl.addEventListener("click", async function () {
+    await sendToTab("pauseLoad");
+    showStatus("Paused. Click Resume to continue from the same place. Nothing is lost.");
   });
-
-  onClick("resetAll", async function () {
-    const result = await sendToTab("resetAll");
-    showStatus(result && result.ok === false
-      ? (result.reason || "Could not reset results.")
-      : "All results reset. Your center, radius and other settings are kept.");
+  const _rl = document.getElementById("resumeLoad"); if (_rl) _rl.addEventListener("click", async function () {
+    await sendToTab("resumeLoad");
+    showStatus("Resumed. Continuing from where it stopped.");
   });
+  const _sl = document.getElementById("stopLoad"); if (_sl) _sl.addEventListener("click", async function () {
+    await sendToTab("stopLoad");
+    showStatus("Stop requested.");
+  });
+  document.getElementById("showAll").addEventListener("click", async function () {
+    await sendToTab("showAll");
+    showStatus("Showing all jobs again.");
+  });
+  document.getElementById("resetAll").addEventListener("click", async function () {
+    await sendToTab("resetAll");
+    showStatus("All results reset. All jobs are shown again, the map is cleared, and automated mode is stopped. Your center, radius and other settings are kept.");
+  });
+  document.getElementById("goTop").addEventListener("click", function () { sendToTab("goTop"); });
+  document.getElementById("goBottom").addEventListener("click", function () { sendToTab("goBottom"); });
 
-  onClick("goTop", function () { sendToTab("goTop"); });
-  onClick("goBottom", function () { sendToTab("goBottom"); });
-
-  sendToTab("getStatus").then(function (result) {
-    if (result && result.ok) {
-      showStatus("Page " + result.page + ". Loaded " + result.total +
-        " jobs. Next page: " + (result.hasNext ? "yes" : "no") +
-        ". Previous page: " + (result.hasPrev ? "yes" : "no") + ".");
+  sendToTab("getStatus").then(function (r) {
+    if (r && r.ok) {
+      showStatus("Page " + r.page + ". Loaded " + r.total + " jobs. Next page: " + (r.hasNext ? "yes" : "no") + ". Previous page: " + (r.hasPrev ? "yes" : "no") + ". Speed: " + r.speed + ".");
     }
   });
 });

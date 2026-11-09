@@ -1,4 +1,4 @@
-# Indeed Radius Filter Simple v1.0
+# Indeed Job Map v0.1.0
 
 Simple version, no automation. It only shows jobs on the map.
 
@@ -25,16 +25,16 @@ Simple version, no automation. It only shows jobs on the map.
 - Change the center in the popup, or drag the blue pin on the map, or click Reset center.
 
 ## Install in Chrome
-1. Remove any other Indeed Radius Filter version first, in chrome://extensions, so the simple and full versions do not run at the same time.
-2. Unzip indeed-radius-filter-simple-v1.0.zip and keep the folder indeed-radius-filter-simple.
+1. Remove any other Indeed Job Map version first, in chrome://extensions, so the simple and full versions do not run at the same time.
+2. Unzip indeed-job-map-v0.1.0.zip and keep the folder indeed-job-map.
 3. Open Chrome and go to chrome://extensions
 4. Turn on Developer mode, top right.
 5. Click Load unpacked.
-6. Choose the folder indeed-radius-filter-simple (the folder with manifest.json in it, not the zip file itself).
+6. Choose the folder indeed-job-map (the folder with manifest.json in it, not the zip file itself).
 7. Open ca.indeed.com, run a job search, scroll down yourself to load jobs, then click Show map.
 
 ## Files
-- manifest.json: name Indeed Radius Filter Simple, version 1.0.0
+- manifest.json: name Indeed Job Map, version 0.1.0
 - leaflet/leaflet.js and leaflet/leaflet.css: Leaflet 1.9.4, bundled locally
 - content.js, content.css, popup.html, popup.js, popup.css
 - icons/icon16.png, icon32.png, icon48.png, icon128.png, icon256.png, icon512.png: the logo
@@ -58,3 +58,8 @@ Same fix as full v1.15: detail location is only used if the detail title matches
 
 ## v1.5 fix: wrong direction showed and the map is not even opened
 Same fix as full v1.16: Show on map opens the map first, always, then looks for the job, shows a clear message in the map detail bar if it cannot find it, and does not reset the view to the center when focusing a job.
+
+## v1.6 fix: the city is wrong when you click Show on map
+Same fix as full v1.17: Show on map now identifies the open job first, then corrects its city from the job detail pane every time, not only when it has no place. Location comes only from the location element, or from a Town, QC line in the top of the card / detail pane, never from the whole card or description. townCoordsFor now matches the exact town before the comma first, then the longest whole-word town name, with accents, apostrophes and dots stripped, so Montreal, Quebec, Trois-Rivieres, Baie-D'Urfe, St. John's and Sault Ste. Marie all match, and Quebec on its own means Quebec City. The job lookup is scoped to the job detail pane only, never to the first h2 on the page. Also fixed in Simple only: the Refresh map and Reset all results buttons in the map overlay existed but did nothing, because their listeners were removed. They work again now.
+Version strings are synced: content.js, the panel and manifest.json all say 1.6.0 now (they said 1.0.0 in the code while the manifest said 1.5.0). Checked: node --check passes for content.js and popup.js, and the same town test passes as in full v1.17.
+Install: remove the old version in Chrome first, unzip indeed-radius-filter-simple-v1.6.zip, Load unpacked, pick indeed-radius-filter-simple, reload Indeed with F5. Do not install the full and simple versions at the same time.

@@ -1,4 +1,4 @@
-// Indeed Radius Filter Simple, version 1.0.0
+// Indeed Job Map, version 0.1.0
 // What it does:
 // 1. Auto scrolls the left job list to the end, in small steps, so Indeed loads every job.
 // 2. Keeps only jobs within the chosen radius from the chosen center, anywhere in Canada.
@@ -81,6 +81,7 @@
     "beaconsfield": { lat: 45.4333, lng: -73.8333 },
     "pierrefonds": { lat: 45.4667, lng: -73.8500 },
     "quebec city": { lat: 46.8139, lng: -71.2080 },
+    "quebec": { lat: 46.8139, lng: -71.2080 },
     "gatineau": { lat: 45.4765, lng: -75.7013 },
     "sherbrooke": { lat: 45.4000, lng: -71.9000 },
     "trois-rivieres": { lat: 46.3500, lng: -72.5500 },
@@ -314,7 +315,9 @@
   }
 
   function norm(s) {
-    return (s || "").toLowerCase().replace(/[-']/g, " ").replace(/\s+/g, " ").trim();
+    // Strip accents first: "Montreal" must match "Montreal", "Baie-D'Urfe" must
+    // match "baie-durfe". Without this, townCoordsFor missed accented towns.
+    return (s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['\u2019]/g, "").replace(/[-.]/g, " ").replace(/\s+/g, " ").trim();
   }
 
   function haversineKm(lat1, lng1, lat2, lng2) {
@@ -346,8 +349,11 @@
   }
 
   function getDetailAddress() {
-    const detail = document.querySelector("[data-testid='job-detail'], .jobsearch-JobComponent, main") || document.body;
-    const text = detail ? detail.innerText || "" : "";
+    const detail = document.querySelector("[data-testid='job-detail'], .jobsearch-JobComponent");
+    if (!detail) return null;
+    // Header area only: a postal code deep in the job description, or on
+    // another job, is not this job's address.
+    const text = (detail.innerText || "").slice(0, 1500);
     const postal = text.match(/\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z] ?\d[ABCEGHJ-NPRSTV-Z]\d\b/i);
     if (!postal) return null;
     const idx = text.indexOf(postal[0]);
@@ -635,7 +641,10 @@
   function getLocationText(card) {
     const locEl = card.querySelector("[data-testid='text-location'], .companyLocation, [class*='companyLocation']");
     if (locEl && textOf(locEl)) return textOf(locEl);
-    return textOf(card);
+    // No location element: return empty, never the whole card text. The whole
+    // card holds the description, and any town named there is usually not
+    // this job's city. collectJobLocations has its own card-top line scan.
+    return "";
   }
 
   function isRemote(card) {
@@ -643,11 +652,28 @@
   }
 
   function townCoordsFor(text) {
+    if (!text) return null;
     const n = norm(text);
-    for (const town of Object.keys(TOWN_COORDS)) {
-      if (n.indexOf(norm(town)) !== -1) return TOWN_COORDS[town];
+    if (!n) return null;
+    // 1. Exact town before the comma: "Blainville, QC" -> Blainville.
+    // This is the location field itself, not a mention in a description.
+    const head = norm(String(text).split(",")[0].trim());
+    if (head) {
+      for (const town of Object.keys(TOWN_COORDS)) {
+        if (norm(town) === head) return TOWN_COORDS[town];
+      }
     }
-    return null;
+    // 2. Longest whole-word match, so a longer town name wins over a shorter
+    // one contained in it, and list order can no longer pick the wrong city.
+    // Callers must pass location-only text, never a whole card or description.
+    let best = null, bestLen = 0;
+    for (const town of Object.keys(TOWN_COORDS)) {
+      const tn = norm(town);
+      if (!tn || tn.length <= bestLen) continue;
+      const esc = tn.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (new RegExp("(^|[^a-z0-9])" + esc + "([^a-z0-9]|$)").test(n)) { best = TOWN_COORDS[town]; bestLen = tn.length; }
+    }
+    return best;
   }
 
   async function geocodeTown(text) {
@@ -692,7 +718,9 @@
     if (!coords) {
       const detailAddr = getDetailAddress();
       const cardTitle = textOf(card).slice(0, 60);
-      const detailTitle = (document.querySelector("h1, h2") ? textOf(document.querySelector("h1, h2")) : "");
+      const detailEl = document.querySelector("[data-testid='job-detail'], .jobsearch-JobComponent");
+      const detailTitleEl = detailEl ? detailEl.querySelector("h1, h2, [data-testid='job-title']") : null;
+      const detailTitle = detailTitleEl ? textOf(detailTitleEl) : "";
       if (detailAddr && detailTitle && cardTitle && detailTitle.indexOf(cardTitle.slice(0, 20)) !== -1) {
         coords = await geocodeAddress(detailAddr);
         if (coords) source = "exact address " + detailAddr;
@@ -938,7 +966,7 @@
       const locEl = card.querySelector("[data-testid='text-location'], [data-testid='job-location'], .companyLocation");
       let locationText = locEl ? textOf(locEl).trim().slice(0, 80) : "";
       if (!locationText) {
-        const inner = (card.innerText || "").split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 2 && s.length < 40; });
+        const inner = (card.innerText || "").split("\n").slice(0, 8).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 2 && s.length < 40; });
         const locLine = inner.find(function (s) { return /,\s*(QC|ON|BC|AB|MB|SK|NS|NB|NL|PE|YT|NT|NU)\b/.test(s); });
         if (locLine) locationText = locLine.slice(0, 80);
       }
@@ -1079,11 +1107,19 @@
     } catch (e) {}
     const sel = document.querySelector("[data-jk][aria-selected='true'], li[aria-selected='true'] [data-jk], .job_seen_beacon[data-jk], [data-jk].selected, [data-jk].active, li.selected [data-jk], li.active [data-jk]");
     if (sel) return sel.getAttribute("data-jk");
-    const detailTitle = document.querySelector("h2");
-    if (detailTitle) {
-      const title = (detailTitle.textContent || "").trim().slice(0, 60);
-      const card = jobLocations.find(function (j) { return j.title && title && j.title.indexOf(title.slice(0, 30)) !== -1; });
-      if (card && card.jk) return card.jk;
+    const detail = document.querySelector("[data-testid='job-detail'], .jobsearch-JobComponent");
+    if (detail) {
+      const link = detail.querySelector("a[href*='jk=']");
+      if (link) {
+        const m = (link.getAttribute("href") || "").match(/[?&]jk=([A-Za-z0-9]+)/);
+        if (m) return m[1];
+      }
+      const titleEl = detail.querySelector("h2, [data-testid='job-title']");
+      if (titleEl) {
+        const title = (titleEl.textContent || "").trim().slice(0, 60);
+        const card = jobLocations.find(function (j) { return j.title && title && j.title.indexOf(title.slice(0, 30)) !== -1; });
+        if (card && card.jk) return card.jk;
+      }
     }
     return null;
   }
@@ -1093,23 +1129,37 @@
     if (!detail) return "";
     // Only use the detail pane if it is the same job. Otherwise we would take
     // the place of a different job, for example Toronto instead of Montreal.
-    const detailTitle = textOf(detail.querySelector("h2, [data-testid='job-title']") || detail).slice(0, 120);
-    if (job && job.title && detailTitle.indexOf(job.title.slice(0, 30)) === -1 && job.title.indexOf(detailTitle.slice(0, 30)) === -1) return "";
+    const titleEl = detail.querySelector("h2, [data-testid='job-title']");
+    const detailTitle = titleEl ? textOf(titleEl).slice(0, 120) : "";
+    if (job && job.title && detailTitle && detailTitle.indexOf(job.title.slice(0, 30)) === -1 && job.title.indexOf(detailTitle.slice(0, 30)) === -1) return "";
     const els = detail.querySelectorAll("[data-testid='text-location'], .companyLocation");
     for (let i = 0; i < els.length; i++) {
       const txt = textOf(els[i]).trim();
       if (txt && txt.length < 80 && /,\s*(QC|ON|BC|AB|MB|SK|NS|NB|NL|PE|YT|NT|NU)\b/.test(txt)) return txt;
     }
-    const inner = (detail.innerText || "").split("\n").map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 2 && s.length < 40; });
+    // Fallback: header area only, first 10 lines. The location sits under the
+    // title and company. A Town, QC line later in the pane is in the job
+    // description (head office, other locations) and is not this job's city.
+    const inner = (detail.innerText || "").split("\n").slice(0, 10).map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 2 && s.length < 40; });
     const locLine = inner.find(function (s) { return /,\s*(QC|ON|BC|AB|MB|SK|NS|NB|NL|PE|YT|NT|NU)\b/.test(s); });
     return locLine || "";
   }
 
-  function fixJobPlaceFromDetail(job) {
-    if (!job || !job.noPlace) return job;
+  async function fixJobPlaceFromDetail(job) {
+    if (!job) return job;
     const loc = getDetailLocation(job);
     if (!loc) return job;
-    const coords = townCoordsFor(loc);
+    // Already correct: same city, and it already has a place. Do not move it.
+    if (!job.noPlace && job.location && norm(job.location) === norm(loc)) return job;
+    let coords = townCoordsFor(loc);
+    if (!coords) {
+      const postal = loc.match(/\b[ABCEGHJ-NPRSTVXY]\d[ABCEGHJ-NPRSTV-Z] ?\d[ABCEGHJ-NPRSTV-Z]\d\b/i);
+      if (postal) coords = await geocodeAddress(postal[0] + ", " + loc);
+    }
+    if (!coords) {
+      const short = loc.split(",")[0].trim();
+      if (short && !isGenericPlace(short)) coords = await geocodeTown(short);
+    }
     if (!coords) return job;
     const center = effectiveCenter();
     job.location = loc;
@@ -1121,9 +1171,9 @@
     return job;
   }
 
-  function focusJobOnMap(job) {
+  async function focusJobOnMap(job) {
     if (!job || !mapObj) return false;
-    fixJobPlaceFromDetail(job);
+    await fixJobPlaceFromDetail(job);
     if (job.outsideCanada || job.noPlace) {
       showJobDetail(job);
       setStatus("That job has no place on the map, it is in the small list below the map: " + job.title);
@@ -1143,8 +1193,13 @@
 
   async function showCurrentJobOnMap() {
     if (!isJobListPage()) { setStatus("Show on map only works on an Indeed search list, not on a job detail page."); return { ok: false }; }
+    // Identify the open job FIRST. showMap re-collects the list and rebuilds
+    // jobLocations, so a job found after that can already carry a wrong city.
+    let jk = getCurrentJobKey();
     await showMap(true);
-    const jk = getCurrentJobKey();
+    // Retry once after the map collect: the title fallback in
+    // getCurrentJobKey needs jobLocations, which showMap just filled.
+    if (!jk) jk = getCurrentJobKey();
     if (!jk) {
       setMapDetail("Could not tell which job is open. Click the job in the list first, then click Show on map again. The map is open with all loaded jobs, click any pin.");
       setStatus("Could not tell which job is open. Click the job in the list first, then click Show on map again.");
@@ -1163,10 +1218,10 @@
       setStatus("That job is not in the loaded list yet. Scroll the list to load more jobs, then click Show on map again.");
       return { ok: false, reason: "job not in list" };
     }
-    fixJobPlaceFromDetail(job);
+    await fixJobPlaceFromDetail(job);
     plotJobMarkers();
     updateMapCount();
-    focusJobOnMap(job);
+    await focusJobOnMap(job);
     setStatus("Showing on the map: " + job.title + ", " + job.location);
     return { ok: true, title: job.title };
   }
@@ -1265,6 +1320,8 @@
         openSel.value = settings.openInNewPage === false ? "same" : "new";
         openSel.addEventListener("change", function () { saveSettingsPatch({ openInNewPage: openSel.value === "new" }); settings.openInNewPage = openSel.value === "new"; });
       }
+      document.getElementById("irf-map-refresh").addEventListener("click", async function () { await refreshMapForCurrentPage(); });
+      document.getElementById("irf-map-reset-all").addEventListener("click", function () { resetAllResults(); });
       document.getElementById("irf-map-showall").addEventListener("click", function () { showAllJobs(); plotJobMarkers(); updateMapCount(); });
       overlay.addEventListener("click", function (e) {
         const btn = e.target && e.target.closest ? (e.target.closest(".irf-open-job-popup") || e.target.closest(".irf-open-job")) : null;
@@ -1347,7 +1404,7 @@
     const logoUrl = (typeof chrome !== "undefined" && chrome.runtime && chrome.runtime.getURL) ? chrome.runtime.getURL("icons/icon32.png") : "";
     panel.innerHTML =
       '<div class="irf-head"><img src="' + logoUrl + '" alt="Logo">' +
-      '<h3>Indeed Radius Filter<small>v1.0 simple, no automation, map only</small></h3>' +
+      '<h3>Indeed Job Map<small>v0.1, simple, no automation, map only</small></h3>' +
       '<button class="irf-close" id="irf-toggle" title="Hide panel">-</button></div>' +
       '<div class="irf-body">' +
       '<p class="irf-status" id="irf-status">Ready.</p>' +
