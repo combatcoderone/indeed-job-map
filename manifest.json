@@ -1,0 +1,60 @@
+{
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Indeed Radius Filter"
+  },
+  "content_scripts": [
+    {
+      "css": [
+        "leaflet/leaflet.css",
+        "content.css"
+      ],
+      "js": [
+        "leaflet/leaflet.js",
+        "content.js"
+      ],
+      "matches": [
+        "https://ca.indeed.com/*",
+        "https://www.indeed.com/*",
+        "https://indeed.com/*"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "description": "Simple version, no automation. You scroll Indeed yourself, then it only shows the jobs on an OpenStreetMap, inside Canada, with a radius circle and green and red pins.",
+  "host_permissions": [
+    "https://ca.indeed.com/*",
+    "https://www.indeed.com/*",
+    "https://indeed.com/*",
+    "https://nominatim.openstreetmap.org/*",
+    "https://router.project-osrm.org/*",
+    "https://tile.openstreetmap.org/*"
+  ],
+  "icons": {
+    "128": "icons/icon128.png",
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png"
+  },
+  "manifest_version": 3,
+  "name": "Indeed Radius Filter Simple",
+  "permissions": [
+    "storage"
+  ],
+  "version": "1.5.0",
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "https://ca.indeed.com/*",
+        "https://www.indeed.com/*",
+        "https://indeed.com/*"
+      ],
+      "resources": [
+        "icons/icon32.png",
+        "icons/icon48.png",
+        "leaflet/leaflet.js",
+        "leaflet/leaflet.css"
+      ]
+    }
+  ]
+}
